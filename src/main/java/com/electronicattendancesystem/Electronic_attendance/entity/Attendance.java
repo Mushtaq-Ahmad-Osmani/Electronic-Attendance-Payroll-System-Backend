@@ -5,7 +5,6 @@ import lombok.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.temporal.Temporal;
 
 @Getter
 @Setter
@@ -34,7 +33,7 @@ public class Attendance {
     private boolean isAbsent;
     private LocalDate attendanceDate;
     @ManyToOne
-    @JoinColumn(name = "schedule_id")
+    @JoinColumn(name = "schedule_id",nullable = true)
     private TeacherSchedule schedule;
 
 

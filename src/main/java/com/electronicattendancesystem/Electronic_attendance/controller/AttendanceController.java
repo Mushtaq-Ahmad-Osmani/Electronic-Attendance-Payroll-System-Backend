@@ -1,5 +1,4 @@
 package com.electronicattendancesystem.Electronic_attendance.controller;
-
 import com.electronicattendancesystem.Electronic_attendance.dto.ReqRes;
 import com.electronicattendancesystem.Electronic_attendance.entity.Attendance;
 import com.electronicattendancesystem.Electronic_attendance.entity.Teachers;
@@ -33,7 +32,6 @@ public class AttendanceController {
 
     @PostMapping("/scan")
     public ResponseEntity<ReqRes> scanQRCode(@RequestParam String email) {
-        System.out.println("Request recived for Email " + email);
         return ResponseEntity.ok(usersManagementService.markAttendance(email));
 
     }
@@ -49,9 +47,19 @@ public class AttendanceController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    @GetMapping("/admin/{teacherId}")
-    public ResponseEntity<List<Attendance>> getAttendancesByTeacherId(@PathVariable Long teacherId) {
-        List<Attendance> attendances = attendanceRepo.findByUserId(teacherId);
+    @GetMapping("/admin/teacher/{teacherId}")
+    public ResponseEntity<List<Attendance>> getAttendancesByTeacherId(
+            @PathVariable Long teacherId,
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) Integer month) {
+        List<Attendance> attendances;
+        if (year != null && month != null) {
+            LocalDate startDate = LocalDate.of(year, month, 1);
+            LocalDate endDate = startDate.plusMonths(1).minusDays(1);
+            attendances = attendanceRepo.findByUserIdAndAttendanceDateBetween(teacherId, startDate, endDate);
+        } else {
+            attendances = attendanceRepo.findByUserId(teacherId);
+        }
         return ResponseEntity.ok(attendances);
     }
 
@@ -64,6 +72,15 @@ public class AttendanceController {
         return attendanceRepo.findByAttendanceTimeBetween(
                 firstDayOfMonth.atStartOfDay(),
                 firstDayOfNextMonth.atStartOfDay()
+        );
+    }
+
+    @GetMapping("/admin/email/{email}")
+    public List<Attendance> getAttendancesByEmail(@PathVariable String email) {
+        return attendanceRepo.findAllByEmailAndAttendanceDateBetween(
+                email,
+                LocalDate.of(2000, 1, 1), // Start time
+                LocalDate.now().plusDays(1) // Date of today
         );
     }
 

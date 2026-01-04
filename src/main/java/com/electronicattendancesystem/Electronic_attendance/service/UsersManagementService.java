@@ -9,6 +9,7 @@ import com.electronicattendancesystem.Electronic_attendance.repository.TeacherSc
 import com.electronicattendancesystem.Electronic_attendance.repository.TeachersRepo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -26,6 +27,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class UsersManagementService {
@@ -55,12 +58,27 @@ public class UsersManagementService {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+    private static final Logger logger = LoggerFactory.getLogger(UsersManagementService.class);
 
     public ReqRes register(ReqRes registrationRequest) {
         ReqRes resp = new ReqRes();
         resp.setCredits(registrationRequest.getCredits());
         resp.setCreditRate(registrationRequest.getCreditRate());
-        try{
+
+        try {
+
+            if (teachersRepo.findByEmail(registrationRequest.getEmail()).isPresent()) {
+                resp.setStatusCode(400);
+                resp.setError("Data is duplicate, registration not allowed.");
+                return resp;
+            }
+
+
+            if (teachersRepo.findByPhone(registrationRequest.getPhone()).isPresent()) {
+                resp.setStatusCode(400);
+                resp.setError("Data is duplicate, registration not allowed.");
+                return resp;
+            }
 
             Teachers teachers = new Teachers();
             teachers.setEmail(registrationRequest.getEmail());
@@ -71,21 +89,35 @@ public class UsersManagementService {
             teachers.setTeacher(true);
             teachers.setCredits(registrationRequest.getCredits());
             teachers.setCreditRate(registrationRequest.getCreditRate());
-            teachers.setPassword(passwordEncoder.encode(registrationRequest.getPassword()));
 
-            String token = UUID.randomUUID().toString();  // Generate a unique verification token
+            String password = registrationRequest.getPassword();
+            if (password.length() < 5) {
+                resp.setStatusCode(400);
+                resp.setError("Password must be at least 5 characters long.");
+                return resp;
+            }
+
+            if (!password.matches(".*[A-Z].*")) {
+                resp.setStatusCode(400);
+                resp.setError("Password must contain at least one uppercase letter.");
+                return resp;
+            }
+
+            if (!password.matches(".*[!@#$%^&*(),.?\":{}|<>].*")) {
+                resp.setStatusCode(400);
+                resp.setError("Password must contain at least one special character.");
+                return resp;
+            }
+
+            teachers.setPassword(passwordEncoder.encode(password));
+            String token = UUID.randomUUID().toString();
             teachers.setVerificationToken(token);
             teachers.setEmailVerified(false);
-
 
             Teachers teachersResult = teachersRepo.save(teachers);
 
             if (teachersResult.getId() > 0) {
-
-                // Create verification link
                 String verificationLink = "http://localhost:8080/auth/verify?token=" + token;
-
-
                 emailService.sendEmail(
                         teachersResult.getEmail(),
                         "Email Verification",
@@ -94,13 +126,21 @@ public class UsersManagementService {
 
                 resp.setTeachers(teachersResult);
                 resp.setTeacher(teachersResult.isTeacher());
-                resp.setMessage("User saved successfully. Verification email sent.");
+                resp.setMessage("User registered successfully. Verification email sent.");
                 resp.setStatusCode(200);
+            } else {
+                logger.error("Failed to save teacher: {}", teachers.getEmail());
+                resp.setStatusCode(500);
+                resp.setError("Failed to save user.");
             }
-
+        } catch (DataIntegrityViolationException e) {
+            logger.error("Data integrity violation for email: {}, error: {}", registrationRequest.getEmail(), e.getMessage());
+            resp.setStatusCode(400);
+            resp.setError("Data is duplicate, registration not allowed.");
         } catch (Exception e) {
+            logger.error("Unexpected error during registration for email: {}, error: {}", registrationRequest.getEmail(), e.getMessage());
             resp.setStatusCode(500);
-            resp.setError(e.getMessage());
+            resp.setError("Internal server error: " + e.getMessage());
         }
         return resp;
     }
@@ -121,9 +161,13 @@ public class UsersManagementService {
             response.setExpirationTime("24Hrs");
             response.setMessage("Successfully Logged In");
             response.setTeacher(user.isTeacher());
-        } catch (Exception e) {
-            response.setStatusCode(500);
-            response.setMessage(e.getMessage());
+        }  catch (Exception e) {
+            response.setStatusCode(401); // Unauthorized
+            if (e.getMessage().toLowerCase().contains("bad credentials")) {
+                response.setMessage("Invalid email or password. Please try again.");
+            } else {
+                response.setMessage("Login failed: " + e.getMessage());
+            }
         }
         return response;
     }
@@ -214,6 +258,7 @@ public class UsersManagementService {
         return reqRes;
     }
 
+    //Update for Admin
     public ReqRes updateUser(Long id, Teachers updatedUser) {
         ReqRes reqRes = new ReqRes();
         try {
@@ -227,10 +272,27 @@ public class UsersManagementService {
                 existingUser.setGender(updatedUser.getGender());
                 existingUser.setCredits(updatedUser.getCredits());
                 existingUser.setCreditRate(updatedUser.getCreditRate());
-                existingUser.setTeacher(updatedUser.isTeacher());
+                existingUser.setTeacher(true);
 
                 //Check if password is present in request
                 if (updatedUser.getPassword() != null && !updatedUser.getPassword().isEmpty()) {
+                    // Validate password
+                    String newPassword = updatedUser.getPassword();
+                    if (newPassword.length() < 5) {
+                        reqRes.setStatusCode(400);
+                        reqRes.setMessage("Password must be at least 5 characters long");
+                        return reqRes;
+                    }
+                    if (!newPassword.matches(".*[A-Z].*")) {
+                        reqRes.setStatusCode(400);
+                        reqRes.setMessage("Password must contain at least one uppercase letter");
+                        return reqRes;
+                    }
+                    if (!newPassword.matches(".*[!@#$%^&*(),.?\":{}|<>].*")) {
+                        reqRes.setStatusCode(400);
+                        reqRes.setMessage("Password must contain at least one special character");
+                        return reqRes;
+                    }
                     //Encode the password and update it
                     existingUser.setPassword(passwordEncoder.encode(updatedUser.getPassword()));
                 }
@@ -249,21 +311,82 @@ public class UsersManagementService {
     return reqRes;
 
     }
-    public ReqRes getMyInfo(String email){
+
+
+    //Update for User
+    public ReqRes updateUserPassword(String email, ReqRes reqRes) {
+        ReqRes response = new ReqRes();
+        try {
+            Optional<Teachers> userOptional = teachersRepo.findByEmail(email);
+            if (userOptional.isPresent()) {
+                Teachers user = userOptional.get();
+
+                // Validate password
+                String newPassword = reqRes.getPassword();
+                if (newPassword == null || newPassword.isEmpty()) {
+                    response.setStatusCode(400);
+                    response.setMessage("Password cannot be empty");
+                    return response;
+                }
+
+                if (newPassword.length() < 5) {
+                    response.setStatusCode(400);
+                    response.setMessage("Password must be at least 5 characters long");
+                    return response;
+                }
+
+                if (!newPassword.matches(".*[A-Z].*")) {
+                    response.setStatusCode(400);
+                    response.setMessage("Password must contain at least one uppercase letter");
+                    return response;
+                }
+
+                if (!newPassword.matches(".*[!@#$%^&*(),.?\":{}|<>].*")) {
+                    response.setStatusCode(400);
+                    response.setMessage("Password must contain at least one special character");
+                    return response;
+                }
+
+                // Update only the password
+                user.setPassword(passwordEncoder.encode(newPassword));
+                teachersRepo.save(user);
+
+                response.setStatusCode(200);
+                response.setMessage("Password updated successfully");
+            } else {
+                response.setStatusCode(404);
+                response.setMessage("User not found");
+            }
+        } catch (Exception e) {
+            response.setStatusCode(500);
+            response.setMessage("Error occurred while updating password: " + e.getMessage());
+        }
+        return response;
+    }
+
+
+
+
+    public ReqRes getMyInfo(String email) {
         ReqRes reqRes = new ReqRes();
         try {
+            if (email == null || email.isEmpty()) {
+                reqRes.setStatusCode(400);
+                reqRes.setMessage("Email is required");
+                return reqRes;
+            }
             Optional<Teachers> usersOptional = teachersRepo.findByEmail(email);
-            if (usersOptional.isPresent()){
+            if (usersOptional.isPresent()) {
                 reqRes.setTeachers(usersOptional.get());
                 reqRes.setStatusCode(200);
                 reqRes.setMessage("Successfully");
-            }else {
+            } else {
                 reqRes.setStatusCode(404);
-                reqRes.setMessage("User not found");
+                reqRes.setMessage("User not found with email: " + email);
             }
-        }catch (Exception e){
+        } catch (Exception e) {
             reqRes.setStatusCode(500);
-            reqRes.setMessage("Error occurred while getting user : " + e.getMessage());
+            reqRes.setMessage("Error occurred while getting user: " + e.getMessage());
         }
         return reqRes;
     }
@@ -271,24 +394,19 @@ public class UsersManagementService {
     public ReqRes uploadProfilePicture(Long userId, MultipartFile file) {
         ReqRes reqRes = new ReqRes();
         try {
+            Teachers user = teachersRepo.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
 
-            Teachers user = teachersRepo.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
-
-
-            String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename(); // Generate unique filename
-            Path path = Paths.get(uploadDir + fileName);
-
+            String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
+            Path path = Paths.get("C:/Project/profile-picture" + fileName);
 
             Files.copy(file.getInputStream(), path, StandardCopyOption.REPLACE_EXISTING);
 
-
-            String imageUrl = "http://localhost:8080/uploads/" + fileName;
+            String imageUrl = "/uploads/" + fileName;
             user.setProfilePicture(imageUrl);
 
-            //in Response
             reqRes.setProfilePicture(imageUrl);
-            reqRes.setTeachers(user); // Set updated user in response
-
+            reqRes.setTeachers(user);
             teachersRepo.save(user);
 
             reqRes.setStatusCode(200);
@@ -302,6 +420,7 @@ public class UsersManagementService {
     // Mark attendance (check-in or check-out) for a user
     public ReqRes markAttendance(String email) {
         ReqRes reqRes = new ReqRes();
+
         try {
             Optional<Teachers> userOptional = teachersRepo.findByEmail(email);
             if (userOptional.isEmpty()) {
@@ -315,34 +434,16 @@ public class UsersManagementService {
             DayOfWeek todayDay = today.getDayOfWeek();
             List<TeacherSchedule> schedules = teacherScheduleRepo.findByTeacher_Id(user.getId());
 
-
             Optional<TeacherSchedule> todaySchedule = schedules.stream()
                     .filter(schedule -> schedule.getDayOfWeek().equals(todayDay))
-                    .findFirst(); // Find schedule for today
-            //for check-in after end-time
-            if (todaySchedule.isPresent()) {
-                TeacherSchedule schedule = todaySchedule.get();
-                LocalTime classEndTime = schedule.getEndTime();
-                if (LocalTime.now().isAfter(classEndTime)) {
-                    reqRes.setStatusCode(400);
-                    reqRes.setMessage("You are not allowed to check-in after the class ends");
-                    return reqRes;
-                }
-            }
-
-
-            Optional<LocalTime> optionalFirstClassStart = schedules.stream()
-                    .filter(schedule -> schedule.getDayOfWeek().equals(todayDay))
-                    .map(TeacherSchedule::getStartTime)
-                    .min(LocalTime::compareTo); // Find the earliest start time
+                    .findFirst();
 
             Optional<Attendance> todayAttendance = attendanceRepo
                     .findByEmailAndAttendanceTimeBetween(
                             email,
                             today.atStartOfDay(),
                             today.plusDays(1).atStartOfDay()
-                    );  // Check if attendance exists for today
-
+                    );
 
             if (todayAttendance.isPresent()) {
                 Attendance attendance = todayAttendance.get();
@@ -367,53 +468,65 @@ public class UsersManagementService {
                 reqRes.setStatusCode(200);
                 reqRes.setMessage("Check-out marked successfully at " + now);
                 return reqRes;
-            } else {
-                Attendance attendance = new Attendance();
-                attendance.setUser(user);
-                attendance.setUserName(user.getName());
-                attendance.setEmail(user.getEmail());
-                todaySchedule.ifPresent(attendance::setSchedule);
-                attendance.setAttendanceDate(today);
-                attendance.setAttendanceTime(LocalDateTime.now());
-                attendance.setCheckInTime(LocalDateTime.now());
-
-                if (optionalFirstClassStart.isPresent()) {
-                    LocalTime firstClassStartTime = optionalFirstClassStart.get();
-                    LocalTime actualCheckIn = attendance.getCheckInTime().toLocalTime();
-                    Duration lateDuration = Duration.between(firstClassStartTime, actualCheckIn);
-                    boolean isAbsent = lateDuration.toMinutes() > 15;
-                    attendance.setAbsent(isAbsent);
-
-                    if (isAbsent && user.getCredits() > 0) {
-                        user.setCredits(user.getCredits() - 1);
-                        teachersRepo.save(user);
-                    }
-                } else {
-                    attendance.setAbsent(false);  // No schedule, so not absent
-                }
-
-                long totalMinutes = schedules.stream()
-                        .filter(schedule -> schedule.getDayOfWeek().equals(todayDay))
-                        .mapToLong(schedule -> Duration.between(schedule.getStartTime(), schedule.getEndTime()).toMinutes())
-                        .sum();   // Calculate total minutes of classes
-
-                int expectedCredits = (int) Math.round(totalMinutes / 60.0);
-                attendance.setExpectedCredits(expectedCredits);
-
-                int actualCredits = attendance.isAbsent() ? Math.max(0, expectedCredits - 1) : expectedCredits;
-                attendance.setActualCredits(actualCredits);
-
-
-
-
-                attendanceRepo.save(attendance);
-
-
-
-                reqRes.setStatusCode(200);
-                reqRes.setMessage("Check-in marked successfully at " + attendance.getCheckInTime());
-                return reqRes;
             }
+
+            if (todaySchedule.isPresent()) {
+                TeacherSchedule schedule = todaySchedule.get();
+                LocalTime classEndTime = schedule.getEndTime();
+                if (LocalTime.now().isAfter(classEndTime)) {
+                    reqRes.setStatusCode(400);
+                    reqRes.setMessage("You are not allowed to check-in after the class ends");
+                    return reqRes;
+                }
+            }
+
+
+            Attendance attendance = new Attendance();
+            attendance.setUser(user);
+            attendance.setUserName(user.getName());
+            attendance.setEmail(user.getEmail());
+            todaySchedule.ifPresent(attendance::setSchedule);
+            attendance.setAttendanceDate(today);
+            attendance.setAttendanceTime(LocalDateTime.now());
+            attendance.setCheckInTime(LocalDateTime.now());
+
+            Optional<LocalTime> optionalFirstClassStart = schedules.stream()
+                    .filter(schedule -> schedule.getDayOfWeek().equals(todayDay))
+                    .map(TeacherSchedule::getStartTime)
+                    .min(LocalTime::compareTo);
+
+            if (optionalFirstClassStart.isPresent()) {
+                LocalTime firstClassStartTime = optionalFirstClassStart.get();
+                LocalTime actualCheckIn = attendance.getCheckInTime().toLocalTime();
+                Duration lateDuration = Duration.between(firstClassStartTime, actualCheckIn);
+                boolean isAbsent = lateDuration.toMinutes() > 15;
+                attendance.setAbsent(isAbsent);
+
+                if (isAbsent && user.getCredits() > 0) {
+                    user.setCredits(user.getCredits() - 1);
+                    teachersRepo.save(user);
+                }
+            } else {
+                attendance.setAbsent(false);  // No schedule, so not absent
+            }
+
+            long totalMinutes = schedules.stream()
+                    .filter(schedule -> schedule.getDayOfWeek().equals(todayDay))
+                    .mapToLong(schedule -> Duration.between(schedule.getStartTime(), schedule.getEndTime()).toMinutes())
+                    .sum();   // Calculate total minutes of classes
+
+            int expectedCredits = (int) Math.round(totalMinutes / 60.0);
+            attendance.setExpectedCredits(expectedCredits);
+
+            int actualCredits = attendance.isAbsent() ? Math.max(0, expectedCredits - 1) : expectedCredits;
+            attendance.setActualCredits(actualCredits);
+
+            attendanceRepo.save(attendance);
+
+            reqRes.setStatusCode(200);
+            reqRes.setMessage("Check-in marked successfully at " + attendance.getCheckInTime());
+            return reqRes;
+
         } catch (Exception e) {
             reqRes.setStatusCode(500);
             reqRes.setMessage("Error while marking attendance: " + e.getMessage());
@@ -423,6 +536,7 @@ public class UsersManagementService {
     // Scheduled task to automatically mark absent teachers at 11:59 PM
     @Scheduled(cron = "0 59 23 * * *")
     public void markAbsentTeachersAutomatically() {
+        System.out.println("markAbsentTeacher method ");
         LocalDate today = LocalDate.now();
         DayOfWeek todayDay = today.getDayOfWeek();
 
@@ -477,7 +591,7 @@ public class UsersManagementService {
         }
     }
     // Scheduled task to evaluate late or missing check-outs at midnight    Run every night at 12:00 AM
-    @Scheduled(cron = "0 0 0 * * *")
+    @Scheduled(cron = "0 */5 * * * *" ,zone = "Asia/Kabul")
     public void evaluateLateOrMissingCheckOuts() {
         System.out.println(" evaluateLateOrMissingCheckOuts() executed!");
         LocalDate today = LocalDate.now();
@@ -499,17 +613,20 @@ public class UsersManagementService {
                 penaltyCount++;
             }
 
-            //early check-out before 10 minutes of end
-            if (checkOutTime != null && checkOutTime.isBefore(scheduledEndTime.minusMinutes(10))) {
-                penaltyCount++;
-            }
-
-            // missing check-out after 1 hour of scheduled end
+            // missing check-out: if checkOutTime is null and now is after end+1h
             if (checkInTime != null && checkOutTime == null &&
                     LocalDateTime.now().isAfter(scheduledEndTime.plusHours(1))) {
+                System.out.println("Check-out missing and eligible for auto-check-out: " + attendance.getEmail());
+                // record hypothetical checkout
                 attendance.setCheckOutTime(scheduledEndTime.plusHours(1));
                 penaltyCount++;
-                System.out.println("Hypothetical check-out recorded for" + attendance.getEmail());
+                System.out.println("Hypothetical check-out recorded for " + attendance.getEmail());
+            }
+
+            // Now check early check-out
+            if (attendance.getCheckOutTime() != null &&
+                    attendance.getCheckOutTime().isBefore(scheduledEndTime.minusMinutes(10))) {
+                penaltyCount++;
             }
 
             if (penaltyCount > 0) {

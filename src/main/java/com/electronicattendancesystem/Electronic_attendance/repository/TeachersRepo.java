@@ -13,4 +13,6 @@ public interface TeachersRepo extends JpaRepository<Teachers,Long> {
     Optional<Teachers> findByVerificationToken(String token);
 
     List<Teachers> findAllByIsTeacherTrue();
+
+    Optional<Teachers> findByPhone(String phone);
 }

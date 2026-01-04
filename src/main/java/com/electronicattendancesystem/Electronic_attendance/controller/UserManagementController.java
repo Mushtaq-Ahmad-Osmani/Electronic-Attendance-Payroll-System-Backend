@@ -1,28 +1,38 @@
 package com.electronicattendancesystem.Electronic_attendance.controller;
+
 import com.electronicattendancesystem.Electronic_attendance.dto.ReqRes;
 import com.electronicattendancesystem.Electronic_attendance.entity.Teachers;
+import com.electronicattendancesystem.Electronic_attendance.repository.TeachersRepo;
 import com.electronicattendancesystem.Electronic_attendance.service.UsersManagementService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Optional;
 
 
 
 @RestController
 public class UserManagementController {
+
     @Autowired
     private UsersManagementService usersManagementService;
 
+    @Autowired
+    private TeachersRepo teachersRepo;
 
     @PostMapping("/auth/register")
-    public ResponseEntity<ReqRes>regeister(@RequestBody ReqRes reg){
-        return ResponseEntity.ok(usersManagementService.register(reg));
+    public ResponseEntity<ReqRes> register(@RequestBody ReqRes reg) {
+        ReqRes response = usersManagementService.register(reg);
+        return ResponseEntity.status(response.getStatusCode()).body(response);
     }
     @PostMapping("/auth/login")
     public ResponseEntity<ReqRes>login(@RequestBody ReqRes req){
@@ -45,6 +55,11 @@ public class UserManagementController {
         return ResponseEntity.ok(usersManagementService.updateUser(userId ,reqres));
     }
 
+    @PutMapping("/user/update-password")
+    public ResponseEntity<ReqRes> updateUserPassword(@RequestBody ReqRes reqRes) {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        return ResponseEntity.ok(usersManagementService.updateUserPassword(email, reqRes));
+    }
 
     @GetMapping("/adminuser/get-profile")
     public ResponseEntity<ReqRes> getMyProfile(){
@@ -67,6 +82,26 @@ public class UserManagementController {
     }
 
 
+    @GetMapping("/profile-picture/{userId}")
+    public ResponseEntity<byte[]> getProfilePicture(@PathVariable Long userId) {
+        try {
+            Teachers user = teachersRepo.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+            String imagePath = user.getProfilePicture();
+            if (imagePath == null || imagePath.isEmpty()) {
+                return ResponseEntity.notFound().build();
+            }
+
+            Path path = Paths.get("C:/Project/profile-picture" + imagePath.replace("/uploads/", ""));
+            byte[] imageBytes = Files.readAllBytes(path);
+            String contentType = "image/jpeg";
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(contentType))
+                    .body(imageBytes);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
 
     @GetMapping("/auth/verify")
     public ResponseEntity<String> verifyEmail(@RequestParam String token) {

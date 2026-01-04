@@ -12,4 +12,9 @@ public interface PayrollRepo extends JpaRepository<Payroll, Long> {
 
 
     List<Payroll> findByTeacherAndYearAndMonth(Teachers teacher, int year, int month);
+
+    List<Payroll> findByTeacher(Teachers teachers);
+
+    List<Payroll> findByTeacherIdAndYearAndMonth(Long teacherId,int year,int month);
+
 }

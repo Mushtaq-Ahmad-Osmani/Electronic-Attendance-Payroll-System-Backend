@@ -12,50 +12,51 @@ import java.io.IOException;
 import java.util.List;
 
 @RestController
-@RequestMapping("/notification")
+@RequestMapping("/api/notifications")
 public class NotificationController {
 
     @Autowired
     private NotificationService notificationService;
 
+    private static final String UPLOAD_DIR = "C:/notification-images/";
 
     @PostMapping("/admin/create")
     public ResponseEntity<Notification> createNotification(
             @RequestParam("title") String title,
             @RequestParam("message") String message,
-            @RequestParam(value = "image", required = false) MultipartFile imageFile) {
-
-        String imageUrl = null;
-        if (imageFile != null && !imageFile.isEmpty()) {
-
-            String uploadDir = System.getProperty("user.dir") + "/notification-images/";
-            File dir = new File(uploadDir);
-            if (!dir.exists()) {
-                dir.mkdirs();
-            }
-
-            String fileName = imageFile.getOriginalFilename();
-            File dest = new File(uploadDir + fileName);
-            try {
-                imageFile.transferTo(dest);  // Save the uploaded file
-                imageUrl = "notification-images/" + fileName;
-            } catch (IOException e) {
-                e.printStackTrace();
-                return ResponseEntity.status(500).build();
-            }
-        }
+            @RequestParam(value = "image", required = false) MultipartFile image) {
 
         Notification notification = new Notification();
         notification.setTitle(title);
         notification.setMessage(message);
-        notification.setImageUrl(imageUrl);
 
-        return ResponseEntity.ok(notificationService.saveNotification(notification));
+        if (image != null && !image.isEmpty()) {
+            File dir = new File(UPLOAD_DIR);
+            if (!dir.exists()) {
+                dir.mkdirs();
+            }
+            String fileName = System.currentTimeMillis() + "_" + image.getOriginalFilename();
+            File dest = new File(UPLOAD_DIR + fileName);
+            try {
+                image.transferTo(dest);
+                notification.setImagePath("/notification-images/" + fileName); // Match static resource path
+            } catch (IOException e) {
+
+                return ResponseEntity.status(500).build();
+            }
+        }
+
+        return ResponseEntity.ok(notificationService.createNotification(notification));
     }
-
 
     @GetMapping("/all")
     public ResponseEntity<List<Notification>> getAllNotifications() {
         return ResponseEntity.ok(notificationService.getAllNotifications());
+    }
+
+    @DeleteMapping("/admin/{id}")
+    public ResponseEntity<String> deleteNotification(@PathVariable Long id) {
+        notificationService.deleteNotification(id);
+        return ResponseEntity.ok("Notification deleted successfully");
     }
 }

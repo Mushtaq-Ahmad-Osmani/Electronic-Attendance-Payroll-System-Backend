@@ -3,6 +3,7 @@ package com.electronicattendancesystem.Electronic_attendance.controller;
 import com.electronicattendancesystem.Electronic_attendance.dto.TeacherScheduleDto;
 import com.electronicattendancesystem.Electronic_attendance.entity.TeacherSchedule;
 import com.electronicattendancesystem.Electronic_attendance.entity.Teachers;
+import com.electronicattendancesystem.Electronic_attendance.repository.AttendanceRepo;
 import com.electronicattendancesystem.Electronic_attendance.repository.TeacherScheduleRepo;
 import com.electronicattendancesystem.Electronic_attendance.service.UsersManagementService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,7 +27,11 @@ public class TeacherScheduleController {
     @Autowired
     private UsersManagementService usersManagementService;
 
+    @Autowired
+    private AttendanceRepo attendanceRepo;
+
     // Get all teacher schedules
+
     @GetMapping("/admin/all")
     public List<TeacherSchedule> getAllSchedules() {
         return scheduleRepo.findAll();
@@ -120,18 +125,41 @@ public class TeacherScheduleController {
     // Delete a teacher schedule (Only admin can delete)
     @DeleteMapping("/admin/{id}")
     public ResponseEntity<?> deleteSchedule(@PathVariable Long id) {
-        TeacherSchedule schedule = scheduleRepo.findById(id).orElse(null);
-        if (schedule == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Schedule not found.");
-        }
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        Teachers user = usersManagementService.findByEmail(auth.getName()).orElse(null);
-        if (user == null || !user.getRole().equals("ADMIN")) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Only admin can delete schedule.");
-        }
+        try {
+            TeacherSchedule schedule = scheduleRepo.findById(id).orElse(null);
+            if (schedule == null) {
+                System.out.println("Delete schedule failed: Schedule with id " + id + " not found.");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body("{\"error\": \"Schedule not found.\"}");
+            }
 
-        scheduleRepo.delete(schedule);
-        return ResponseEntity.ok("Schedule deleted successfully.");
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String email = auth.getName();
+            Teachers user = usersManagementService.findByEmail(email).orElse(null);
+            if (user == null) {
+                System.out.println("Delete schedule failed: User with email " + email + " not found.");
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body("{\"error\": \"User not found.\"}");
+            }
+            if (!user.getRole().equals("ADMIN")) {
+                System.out.println("Delete schedule failed: User " + email + " is not admin.");
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body("{\"error\": \"Only admin can delete schedule.\"}");
+            }
+
+
+            attendanceRepo.setScheduleIdToNull(id);
+            System.out.println("Set schedule_id to NULL for attendance records with schedule id: " + id);
+
+            // Deleting schedule from teacher_schedule
+            scheduleRepo.delete(schedule);
+            System.out.println("Schedule deleted successfully for id: " + id);
+            return ResponseEntity.ok("{\"message\": \"Schedule deleted successfully, attendance records preserved.\"}");
+        } catch (Exception e) {
+            System.err.println("Error deleting schedule with id " + id + ": " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("{\"error\": \"Failed to delete schedule: " + e.getMessage() + "\"}");
+        }
     }
 
 

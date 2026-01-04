@@ -11,12 +11,12 @@ public class StaticResourceConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        // محل ذخیره عکس‌های آپلود شده
-        String uploadPath = Paths.get("uploads").toAbsolutePath().toUri().toString();
-
+        String uploadPath = Paths.get("C:/Project/profile-picture").toAbsolutePath().toUri().toString();
         registry.addResourceHandler("/uploads/**")
-                .addResourceLocations("file:C:/Project/profile-picture/");
+                .addResourceLocations("file:" + uploadPath);
+        String notificationImagePath = Paths.get("C:/notification-images").toAbsolutePath().toString();
         registry.addResourceHandler("/notification-images/**")
-                .addResourceLocations("file:C:/notification-images/");
+                .addResourceLocations("file:" + notificationImagePath + "/")
+                .setCachePeriod(0); // dis activiting the cache for testing
     }
 }
