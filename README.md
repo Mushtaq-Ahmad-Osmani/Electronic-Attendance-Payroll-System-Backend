@@ -131,7 +131,7 @@ All test classes are are located under:
 ### 1️⃣ Clone the repository
 
 ```bash
-git clone https://github.com/Mushtaq-Ahmad-Osmani/Electronic-Attendance-Final-Version
+git clone https://github.com/Mushtaq-Ahmad-Osmani/Electronic-Attendance-Payroll-System-Backend
 ```
 
 ### 2️⃣ Configure Database
