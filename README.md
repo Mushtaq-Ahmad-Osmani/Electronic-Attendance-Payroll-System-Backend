@@ -131,7 +131,7 @@ All test classes are are located under:
 ### 1️⃣ Clone the repository
 
 ```bash
-git clone https://github.com/Mushtaq-Ahmad-Osmani/Electronic-Attendance-Payroll-System-Backend
+git clone https://github.com/Mushtaq-Ahmad-Osmani/Electronic-Attendance-Payroll-System-using-QR-codes-Backend
 ```
 
 ### 2️⃣ Configure Database
@@ -161,7 +161,7 @@ http://localhost:8080
 ## Related Repository:
 
 - **Frontend Repository:**
-https://github.com/Mushtaq-Ahmad-Osmani/Electronic-Attendance-and-payroll-System-Frontend
+https://github.com/Mushtaq-Ahmad-Osmani/Electronic-Attendance-and-payroll-System-using-QR-code-Frontend
 
 ---
 
